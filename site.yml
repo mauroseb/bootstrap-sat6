@@ -1,0 +1,22 @@
+---
+- name: Create Satellite 6 VM
+  hosts: localhost
+  become: yes
+  gather_facts: no
+  roles:
+    - createvm
+  tasks:
+    - name: Add host to insventory
+      add_host:
+        name: "{{ ip }}"
+        ansible_ssh_user: root
+        ansible_password: redhat
+        group: satellite
+
+- name: Install and configure satellite
+  hosts: satellite
+  gather_facts: no
+  roles:
+#    - installsat
+    - configuresat
+...

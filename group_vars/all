@@ -1,0 +1,58 @@
+---
+# NOTE: fill in all the variables to fit your environment
+# domain name
+domain_name: lab.local
+# hostname
+name: sat6
+# ip in network
+ip: 192.168.122.250
+
+#----------------- Images ----------------------------------
+# Images can be passed from a URL or a local file.
+# Given RHEL guest image needs authentication, it can be
+# also instead downloading from URL:
+#    - https://access.redhat.com/downloads/content/69/ver=/
+#
+# The image should be placed in _image_dst_dir_
+#    i.e. /home/stack/images/rhel7-guest.qcow2
+#
+# For local images set:
+#
+#     image_source: 'file'
+#     image_type: 'rhel7'
+#     image_name: 'rhel7-guest.qcow2'
+#
+# Fir url images set:
+#
+#     image_source: 'url'
+#     image_name: 'CentOS-7-x86_64-GenericCloud.qcow2'
+#     image_type: 'centos7'
+#     image_url: "https://cloud.centos.org/centos/7/images/{{image_file}}"
+#
+
+image_source: 'file'
+image_type: 'rhel7'
+image_name: 'rhel7-guest.qcow2'
+image_dst_dir: '/var/lib/libvirt/images'
+source_image: "{{ image_dst_dir }}/{{ image_name }}"
+target_image: "{{ image_dst_dir }}/{{ name }}.qcow2"
+remove_temp_image: false
+
+# NOTE: Replace with SSH key to inject in VMs
+ssh_pubkey: 'ssh-rsa AAAAB3N...'
+
+
+# NOTE: Add CDN credentials and pool id for satellite server and place your manifest in roles/createvm/files/manifest-sat6.zip
+# CDN registration info
+cdnuser: 
+cdnpass: 
+poolid: 
+
+# Sat credentials and settings
+satadmin: admin
+satpass: redhat
+orgname: hell-org
+location: LAB
+manifest: /tmp/manifest-sat6.zip
+
+

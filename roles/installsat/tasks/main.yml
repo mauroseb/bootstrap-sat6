@@ -1,0 +1,37 @@
+---
+- name: Install Satellite Server
+  tags:
+    - install-satellite
+  block:
+  - name: Register Satellite server to CDN
+    redhat_subscription:
+      username: "{{ cdnuser }}"
+      password: "{{ cdnpass }}"
+      pool_ids: "{{ poolid }}"
+      state: present
+
+  - name: Enable Satellite repos
+    rhsm_repository:
+      name:
+        - rhel-7-server-rpms
+        - rhel-7-server-satellite-6.6-rpms
+        - rhel-server-rhscl-7-rpms
+        - rhel-7-server-ansible-2.8-rpms
+        - rhel-7-server-satellite-maintenance-6-rpms
+      state: enabled
+
+  - name: Update OS
+    yum:
+      name: '*'
+      state: latest
+
+  - name: Install Satellite package
+    yum:
+      name:
+       - satellite
+
+  - name: Run satellite-installer
+    shell: |
+      satellite-installer --scenario satellite --foreman-initial-organization "{{ orgname }}" --foreman-initial-location "{{ location }}" --foreman-initial-admin-username "{{ satadmin }}" --foreman-initial-admin-password "{{ satpass }}"
+
+...

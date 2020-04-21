@@ -1,0 +1,186 @@
+---
+- name: "Configure Satellite"
+  tags:
+    - configure-satellite
+  block:
+  - name: Check if CV is already configured
+    shell: |
+      hammer --no-headers --output csv  content-view list   --name CV_OSP_13  --organization "{{ orgname }}"
+    register: checkcv
+    no_log: true
+    changed_when: false
+    ignore_errors: true
+
+  - block:
+#    - name: Upload manifest
+#      shell: |
+#        hammer subscription upload --file "{{ manifest }}" --organization "{{ orgname }}"
+#      ignore_errors: yes
+#
+#    - name: "Set default organization to {{ orgname }}"
+#      shell: |
+#        hammer defaults add --param-name organization_id --param-value 1
+#      ignore_errors: yes
+#
+#    - name: "Set default location to {{ location }}"
+#      shell: |
+#        hammer defaults add --param-name location_id --param-value 2
+#      ignore_errors: yes
+#
+#    - name: Add repos
+#      shell: |
+#        hammer repository-set enable --name "{{ item.name }}" --releasever "{{ item.rel }}" --basearch "x86_64" --product "{{ item.product }}" --organization "{{ orgname }}"
+#      ignore_errors: yes
+#      with_items:
+#        - { name: "Red Hat Enterprise Linux 7 Server (RPMs)" , rel: "7Server" , product: "Red Hat Enterprise Linux Server" }
+#        - { name: "Red Hat Enterprise Linux 7 Server - Extras (RPMs)" , rel: "7Server" , product: "Red Hat Enterprise Linux Server" }
+#        - { name: "Red Hat Enterprise Linux 7 Server - RH Common (RPMs)" , rel: "7Server" , product: "Red Hat Enterprise Linux Server" }
+#        - { name: "Red Hat Enterprise Linux 7 Server (Kickstart)" , rel: "7.7" , product: "Red Hat Enterprise Linux Server" }
+#        - { name: "Red Hat Enterprise Linux 7 Server (Kickstart)" , rel: "7.7" , product: "Red Hat Enterprise Linux Server" }
+#        - { name: "Red Hat Enterprise Linux High Availability (for RHEL 7 Server) (RPMs)", rel: "7Server", product: "Red Hat Enterprise Linux High Availability for x86_64" }
+#        - { name: "Red Hat OpenStack Platform 13 for RHEL 7 (RPMs)", rel: "13", product: "Red Hat OpenStack" }
+#        - { name: "Red Hat Ceph Storage Tools 3 for Red Hat Enterprise Linux 7 Server (RPMs)", rel: "7Server", product: "Red Hat Ceph Storage" }
+#
+    - name: Create OSP13 containers product
+      shell: |
+        hammer product create --organization "{{ orgname }}" --name "OSP13 Containers"
+      ignore_errors: yes
+
+    - name: Create OSP13 containers repository with base container
+      shell: |
+        hammer repository create --content-type docker --url https://registry.access.redhat.com --docker-upstream-name openstack-base --product "OSP13 Containers" --organization "{{ orgname }}" --name base
+      ignore_errors: yes
+
+    # There are 44 container images that can  be added they could be passed via a list but using Doc steps
+    - name: Create OSP13 containers list
+      copy:
+        src: osp13_container_list
+        dest: /tmp/osp13_container_list
+        mode: '0644'
+
+    - name: Add all OSP13 containers into repository
+      shell: |
+        while read I_NAME; do hammer repository create --content-type docker --url https://registry.access.redhat.com --docker-upstream-name $I_NAME  --product "OSP13 Containers" --name $I_NAME --organization "{{ orgname }}"; done < /tmp/osp13_container_list
+      ignore_errors: yes
+
+#    - name: Create sync plan
+#      shell: |
+#        hammer sync-plan create --name Weekly --interval weekly --enabled true --sync-date $(date +%F) --organization "{{ orgname }}"
+#      ignore_errors: yes
+#
+    - name: Set products sync plan
+      shell: |
+        hammer product set-sync-plan --name "{{ item }}" --sync-plan Weekly --organization "{{ orgname }}"
+      ignore_errors: yes
+      loop:
+#        - "Red Hat Enterprise Linux Server"
+#        - "Red Hat Enterprise Linux High Availability for x86_64"
+#        - "Red Hat Ceph Storage"
+#        - "Red Hat OpenStack"
+        - "OSP13 Containers"
+
+#    - name: Sync products
+#      shell: |
+#        hammer product synchronize --name "{{ item }}" --organization "{{ orgname }}"
+#      async: 3600
+#      poll: 0
+#      register: reposync
+#      ignore_errors: yes
+#      with_items:
+#        - "Red Hat Enterprise Linux Server"
+#        - "Red Hat Enterprise Linux High Availability for x86_64"
+#        - "Red Hat Ceph Storage"
+#        - "Red Hat OpenStack"
+#        - "OSP13 Containers"
+
+    - name: Create lifecycle environment
+      shell: |
+        hammer lifecycle-environment create --name {{ item.name }}  --description "Env {{ item.name }}" --prior {{ item.prior }} --organization "{{ orgname }}"
+      ignore_errors: yes
+      loop:
+        - { name: DEV, prior: Library }
+        - { name: QA, prior: DEV }
+        - { name: PROD, prior: QA }
+
+  #  - name: Create content view for RHEL7 SOE
+  #    shell: |
+  #      hammer content-view create --name "CV_RHEL7_SOE" --description "CV RHEL 7 SOE" --repository-ids $( hammer --csv --no-headers repository list --organization "{{ orgname }}" | grep -v Ceph | awk -F, '/Red Hat Enterprise Linux 7 Server/ { if(NR>1){ a=a","$1 }else{a=$1}} END{print a}' ) --organization "{{ orgname }}"
+  #    ignore_errors: yes
+
+#    - name: Create content view with all repos for OSP 13
+#      shell: |
+#        hammer content-view create --name "CV_OSP_13" --description "CV OpenStack 13" --repository-ids $( hammer --csv --no-headers repository list --organization "{{ orgname }}" | awk -F, '{ if(NR>1){ a=a","$1 }else{a=$1}} END{ print a }' ) --organization "{{ orgname }}"
+#      ignore_errors: yes
+#
+  # Without repos synced this will fail (makes sense to check async result first and retry if not completed)
+#    - name: Publishing content views
+#      shell: |
+#        hammer content-view publish --name "{{ item }}" --description "{{ item }} first publish" --organization "{{ orgname }}"
+#      ignore_errors: yes
+#      loop:
+#        -  CV_RHEL7_SOE
+#        -  CV_OSP_13
+#
+#    - name: Promote content views to DEV
+#      shell: |
+#        hammer content-view version promote --content-view "{{ item }}" --description "{{ item }} first publish" --organization "{{ orgname }}"  --to-lifecycle-environment DEV
+#      ignore_errors: yes
+#      loop:
+#        -  CV_RHEL7_SOE
+#        -  CV_OSP_13
+#
+
+    - name: Create host collection
+      shell: |
+        hammer host-collection create --name "OSP13_hosts" --unlimited-hosts true  --organization "{{ orgname }}"
+      register: hc_status
+      failed_when:
+        - '"Name must be unique within one organization" not in hc_status.stderr'
+        - hc_status.rc != 0
+
+    - name: Create activation key
+      shell: |
+        hammer activation-key create --name "AK_OSP13" --unlimited-hosts --description "OSP13 Dev" --lifecycle-environment "DEV" --content-view "CV_OSP_13"  --organization "{{ orgname }}"
+      register: ak_status
+      failed_when: 
+        - '"Name has already been taken" not in ak_status.stderr'
+        - ak_status.rc != 0
+
+    - block:
+      # Using OSP Service Provider subscription
+      - name: Add subscription to activation key
+        shell: |
+          hammer activation-key add-subscription --name "AK_OSP13" --subscription-id 4028fa7a71942f380171944e1c3c33ff --quantity 1 --organization "{{ orgname }}"
+        ignore_errors: yes
+
+      - name: Set content overrides for activation key
+        shell: |
+          hammer activation-key content-override --name "AK_OSP13" --content-label "{{ item }}" --value 1 --organization "{{ orgname }}"
+        ignore_errors: yes
+        loop:
+          - rhel-7-server-satellite-tools-6.6-rpms
+          - rhel-7-server-extras-rpms
+          - rhel-7-server-rh-common-rpms
+          - rhel-ha-for-rhel-7-server-rpms
+          - rhel-7-server-openstack-13-rpms
+          - rhel-7-server-openstack-13-deployment-tools-rpms
+          - rhel-7-server-rhceph-3-osd-rpms
+          - rhel-7-server-rhceph-3-mon-rpms
+          - rhel-7-server-rhceph-3-tools-rpms
+
+      - name: Add host collection for activation key
+        shell: |
+          hammer activation-key add-host-collection --name "AK_OSP13" --host-collection "OSP13_hosts" --organization "{{ orgname }}"
+        ignore_errors: yes
+
+      - name: Update release version for activation key
+        shell: |
+          hammer activation-key update --name "AK_OSP13" --release-version "7Server" --organization "{{ orgname }}"
+        ignore_errors: yes
+
+      when:
+        - ak_status.rc == 0
+
+    #when:
+    #- "CV_OSP_13 not in checkcv.stdout"
+...

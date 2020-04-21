@@ -1,0 +1,3 @@
+site.retry
+ansible-errors.json
+*.swp

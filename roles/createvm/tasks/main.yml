@@ -1,0 +1,132 @@
+---
+- name: Satellite OS VM
+  tags:
+  - create-vm
+  become: yes
+  environment:
+    LIBGUESTFS_BACKEND: direct
+    LIBVIRT_DEFAULT_URI: 'qemu+ssh://stack@localhost/system'
+  block:
+    - name: Check if image already exists
+      stat:
+        path: "{{ target_image }}"
+      register: image_p
+
+    - block:
+
+      - name: Create image dir if not there
+        file:
+          path: "{{ image_dst_dir }}"
+          state: directory
+          owner: root
+          group: root
+          mode: '755'
+          serole: object_r
+          setype: virt_image_t
+          seuser: system_u
+
+      - name: Fetch OS image if source is an url
+        get_url:
+          url: "{{ image_url }}"
+          dest: "{{ temp_image }}"
+        when:
+          - image_source == 'url'
+
+      - name: "Create empty {{ target_image }} of 500G for OS"
+        command: "/usr/bin/qemu-img create -f qcow2 {{ target_image }} 500G"
+        args:
+          creates: "{{ target_image }}"
+        become_user: root
+
+      - name: "Clone {{ source_image }} into {{ target_image }}"
+        command: "/usr/bin/virt-resize --expand /dev/sda1 {{ source_image }} {{ target_image }}"
+
+      - name: Run virt-sysprep for image
+        command: "/usr/bin/virt-sysprep -a {{ target_image }}"
+
+      - name: Set root password and remove cloud-init
+        command: "/usr/bin/virt-customize -a {{ target_image }} --root-password password:redhat --uninstall cloud-init"
+        no_log: true
+
+      - name: Send ssh keys in conf for root access
+        command: "/usr/bin/virt-customize -a {{ target_image }} --ssh-inject root:string:'{{ ssh_pubkey }}'"
+        no_log: true
+
+      - name: Setup sat vm /etc/hosts
+        command: "/usr/bin/virt-customize -a {{ target_image }} --append-line '/etc/hosts:{{ ip }} {{ name }}.{{ domain_name }} {{ name }}'"
+
+      - name: Setup SSHD conf
+        command: "/usr/bin/virt-customize -a {{ target_image }} --append-line '/etc/ssh/sshd_conf:UseDNS no'"
+
+      - name: Setup sat eth0
+        command: >
+          /usr/bin/virt-customize -a {{ target_image }} --run-command 'echo  -e "DEVICE=eth0\nBOOTPROTO=static\nONBOOT=yes\nIPADDR={{ ip }}\nPREFIX=24\nGATEWAY=192.168.122.1\nDNS1=192.168.122.1\nDNS2=192.168.2.254\n" > /etc/sysconfig/network-scripts/ifcfg-eth0'
+
+      - name: Setup undercloud hostname
+        command: "/usr/bin/virt-customize -a {{ target_image }} --hostname '{{ name }}.{{ domain_name }}'"
+      - name: Setup sat hostname in virt host /etc/hosts
+        lineinfile:
+          path: /etc/hosts
+          state: present
+          regexp: '.*{{ name }}\.{{ domain_name }}.*'
+          line: "{{ ip }} {{ name }}.{{ domain_name }} {{ name }}"
+
+      - name: Place satellite manifest to /tmp
+        copy:
+          src: manifest-sat6.zip
+          dest: "{{ manifest }}"
+
+      - name: Upload satellite manifest into image
+        command: "/usr/bin/virt-copy-in -a {{ target_image }} {{ manifest }} /tmp"
+
+      - name: SELinux relabel
+        command: "virt-customize -a {{ target_image }} --selinux-relabel"
+
+      - name: "Create {{ name }} VM "
+        command: "/usr/bin/virt-install --ram  16384 --vcpus 4 --virt-type kvm --os-type linux --os-variant rhel7 --cpu host,+vmx --disk path={{ target_image }},device=disk,bus=virtio,format=qcow2  --import --noautoconsole --vnc  --network network:default --name {{ name }}"
+        args:
+          creates:  "/etc/libvirt/qemu/{{ name }}.xml"
+
+      - name: Ensure undercloud vm is on
+        virt:
+          name: "{{ name }}"
+          state: running
+
+      - name: "Wait for {{ name }} to become available"
+        wait_for:
+          host: "{{ ip }}"
+          port: 22
+          search_regex: OpenSSH
+          timeout: 120
+        register: wf_satready
+
+      - name: "Clean up source image"
+        file:
+          path: "{{ source_image }}"
+          state: absent
+        when:
+          - remove_temp_image
+
+  rescue:
+
+  - name: Destroy sat vm
+    virt:
+      name: "{{ name }}"
+      state: destroyed
+
+  - name: Undefine sat vm
+    virt:
+      name: "{{ name }}"
+      command: undefine
+
+  - name: Cleanup sat vm overlay
+    file:
+      path: "{{ target_image }}"
+      state: absent
+
+  when:
+    - image_p.stat.islnk is not defined
+  tags:
+    - createvm
+
+...
