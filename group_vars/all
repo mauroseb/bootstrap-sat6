@@ -4,7 +4,7 @@
 domain_name: lab.local
 # hostname
 name: sat6
-# ip in network
+# ip
 ip: 192.168.122.250
 
 #----------------- Images ----------------------------------
