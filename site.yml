@@ -17,6 +17,6 @@
   hosts: satellite
   gather_facts: no
   roles:
-#    - installsat
+    - installsat
     - configuresat
 ...
