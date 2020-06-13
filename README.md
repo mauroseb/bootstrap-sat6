@@ -17,7 +17,7 @@ The following lists the three roles and what they do:
 
 ## Usage
 
-### Prerequisits
+### Prereqs
 
  - Have a fresh fedora build
  - At least 16 GB of RAM, 4 CPUs, 500 GB disk free in /var/lib/libvirt/instances
